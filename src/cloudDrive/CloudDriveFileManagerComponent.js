@@ -39,15 +39,20 @@ function PostFile(userID, fileRef) {
         }).catch((error) => {
             console.log(error);
         }).then((response) => {
-            console.log(response)
         })
 
 }
 
-function DeleteFile(userID, fileID) {
-    fileManagementAPI.delete(`/${userID}/${fileID}`)
+function DeleteFile(userID, fileID) { 
+    fileManagementAPI.delete(`/${userID}/${fileID}`, {
+        mode: 'cors',
+    })
         .then((response) => {
-            console.log(response);
+            return fileManagementAPI.delete(response.data.DeleteURL);
+        })
+        .then((response) => {
+        })
+        .catch((error) => {
         })
 }
 
