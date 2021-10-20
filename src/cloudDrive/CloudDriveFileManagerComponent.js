@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import moment from 'moment';
 import * as Config from '../helpers/config';
+import fileDownload from 'js-file-download';
+import Auth from '@aws-amplify/auth';
 
 const BaseURL = Config.API_BASE_URL;
 const fileManagementAPI = axios.create({
@@ -13,67 +15,103 @@ function PatchFile(fileIDs, fileRef) {
   const userID = fileIDs.userID;
   const fileName = fileRef.current.files[0].name
   const file = fileRef.current.files[0]
-  fileManagementAPI.patch(`/${userID}/${fileID}`, {FileName: fileName})
-    .then((response) => {
-      const postURL = response.data.PostURL;
-      const formData = new FormData();
-      formData.append('key', fileID);
-      formData.append('file', file);
-
-      const config = {
+  Auth.currentSession()
+    .then(session => {
+      const requestOptions = {
         headers: {
-          'content-type': 'multipart/form-data'
-        }
+          'Authorization': `Bearer ${session.idToken.jwtToken}`,
+        },
       }
-
-      return fileManagementAPI.post(postURL, formData, config);
-    })
-    .then(() => {
-      window.location.reload(false);
+      fileManagementAPI.patch(`/${userID}/${fileID}`, {FileName: fileName}, requestOptions)
+        .then((response) => {
+          const postURL = response.data.PostURL;
+          const formData = new FormData();
+          formData.append('key', fileID);
+          formData.append('file', file);
+        
+          const config = {
+            headers: {
+              'content-type': 'multipart/form-data'
+            }
+          }
+        
+          return fileManagementAPI.post(postURL, formData, config);
+        })
+        .then(() => {
+          window.location.reload(false);
+        });
     });
 }
 
-function GetFile(userID, fileID) {
-  const link = document.createElement('a')
-  link.href = `${BaseURL}/${userID}/${fileID}`
-  document.body.appendChild(link)
-  link.click();
+function GetFile(userID, fileID, fileName) {
+  Auth.currentSession()
+    .then(session => {
+      const requestOptions = {
+        headers: {
+          'Authorization': `Bearer ${session.idToken.jwtToken}`,
+        },
+      }
+      fileManagementAPI.get(`/${userID}/${fileID}`, requestOptions)
+        .then((response) => {
+          return axios.get(response.data.DownloadURL, {responseType:'blob'})
+        })
+        .then((response) => {
+          fileDownload(response.data, fileName);
+        });
+    });
 }
 
 function PostFile(userID, lastName, firstName, fileRef) {
   const fileName = fileRef.current.files[0].name
   const file = fileRef.current.files[0]
-  fileManagementAPI.post(`/${userID}`, { FileName: fileName, LastName: lastName, FirstName: firstName })
-    .then((response) => {
-      const fileID  = response.data.FileID
-      const uploadURL = response.data.UploadURL
-      // console.log(response.data.FileID);
-      const formData = new FormData();
-      formData.append('key', fileID);
-      formData.append('file', file);
-      
-      const config = {
+  Auth.currentSession()
+    .then(session => {
+      const requestOptions = {
         headers: {
-          'content-type': 'multipart/form-data'
-        }
+          'Authorization': `Bearer ${session.idToken.jwtToken}`,
+        },
       }
+      fileManagementAPI.post(`/${userID}`, { FileName: fileName, LastName: lastName, FirstName: firstName }, requestOptions)
+        .then((response) => {
+          const fileID  = response.data.FileID
+          const uploadURL = response.data.UploadURL
+          const formData = new FormData();
+        
+          formData.append('key', fileID);
+          formData.append('file', file);
 
-      return fileManagementAPI.post(uploadURL, formData, config);
-    }).catch((error) => {
-      console.log(error);
-    }).then(() => {
-      window.location.reload();
-    });
+          const config = {
+            headers: {
+              'content-type': 'multipart/form-data'
+            }
+          }
+        
+          return fileManagementAPI.post(uploadURL, formData, config);
+        }).catch((error) => {
+          console.log(error);
+        }).then(() => {
+          window.location.reload();
+        });
+  });
 }
 
 function DeleteFile(userID, fileID) { 
-  fileManagementAPI.delete(`/${userID}/${fileID}`)
-    .then((response) => {
-      return fileManagementAPI.delete(response.data.DeleteURL);
-    })
-    .then(() => {
-      window.location.reload();
-    });
+  Auth.currentSession()
+    .then(session => {
+      const requestOptions = {
+        headers: {
+          'Authorization': `Bearer ${session.idToken.jwtToken}`,
+        },
+      }
+
+      fileManagementAPI.delete(`/${userID}/${fileID}`, requestOptions)
+        .then((response) => {
+          return fileManagementAPI.delete(response.data.DeleteURL);
+        })
+        .then(() => {
+          window.location.reload();
+        });
+  })
 }
 
 function CloudDriveFileManager({ userID, isAdmin, lastName, firstName }) {
@@ -83,18 +121,28 @@ function CloudDriveFileManager({ userID, isAdmin, lastName, firstName }) {
   const fileRef = useRef(null);
 
   useEffect(() => {
-    fileManagementAPI.get(`/${isAdmin ? '': userID}`)
-      .then(function (response) {
-        console.log(response.data);
-        setFiles(response.data);
+    Auth.currentSession()
+      .then(session => {
+        const requestOptions = {
+          headers: {
+            'Authorization': `Bearer ${session.idToken.jwtToken}`,
+          },
+        }
+        
+        fileManagementAPI.get(`/${isAdmin ? '': userID}`, requestOptions)
+          .then(function (response) {
+            console.log(response.data);
+            setFiles(response.data);
+          })
+          .catch(function (error) {
+            console.log(error);
+          })
       })
-      .catch(function (error) {
-        console.log(error);
-    })
   }, [isAdmin, userID]);
 
   return (
     <div className="CloudDrive-manager">
+      <h2>The Upload Button Changes To Update When Clicking On In Row Updates</h2>
       <form onSubmit={(event) => {
         console.log(fileRef.current.files);
         if (!fileRef) {
@@ -111,7 +159,7 @@ function CloudDriveFileManager({ userID, isAdmin, lastName, firstName }) {
         <input type="file" ref={fileRef} required={true} />
         { updateFilePopup ? 
           <input type="submit" value="Update" /> :
-          <input type="submit" value="Upload" />
+          <input type="submit" value="Upload" /> 
         }
       </form>
       <button onClick={() => {setUpdateFile(false)}}>Cancel Update</button>
@@ -130,7 +178,7 @@ function CloudDriveFileManager({ userID, isAdmin, lastName, firstName }) {
         <tbody>
         { files && files.length !== 0 && files.sort((a, b) => (moment(a.Modified).isAfter(b.Modified) ? -1 : 1 )).map(file => (
           <tr className="table-row" key={file.FileID}>
-            <td className="FileName" onClick={() => {GetFile(file.UserID, file.FileID)}}>{file.FileName}</td>
+            <td className="FileName" onClick={() => {GetFile(file.UserID, file.FileID, file.FileName)}}>{file.FileName}</td>
             <td>{file.UserID}</td>
             <td>{file.FirstName}</td>
             <td>{file.LastName}</td>
