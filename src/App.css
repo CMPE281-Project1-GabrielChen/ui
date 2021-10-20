@@ -42,15 +42,16 @@
 }
 
 .CloudDrive-manager {
-  margin: 0 auto;
-  width: 800px;
-  border: 2px solid black;
-  border-radius: 15px;
-  padding: 20px 50px;
+  padding-bottom: 40px;
 }
 
 .CloudDrive-manager > table {
+  margin: 0 auto;
+  margin-bottom: 20px;
   padding-inline-start: 0px;
+  border: 2px solid black;
+  border-radius: 15px;
+  padding: 20px 50px;
 }
 
 .CloudDrive-manager tr {
